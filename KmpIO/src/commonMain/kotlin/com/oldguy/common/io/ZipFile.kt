@@ -197,6 +197,7 @@ interface ZipFileBase: Closeable {
      */
     suspend fun zipDirectory(directory: File,
                              shallow: Boolean = false,
+                             withParent: Boolean = false,
                              filter: ((pathName: String) -> Boolean)? = null)
 
     /**
@@ -529,14 +530,20 @@ class ZipFile(
     override suspend fun zipDirectory(
         directory: File,
         shallow: Boolean,
+        withParent: Boolean,
         filter: ((pathName: String) -> Boolean)?
     ) {
         if (!directory.isDirectory)
-            throw IllegalArgumentException("Path ${file.file.path} os not a directory")
-        val parentPath = if (directory.path.endsWith(File.pathSeparator))
-            directory.path
+            throw IllegalArgumentException("Path ${file.file.path} is not a directory")
+        val directoryPath = if (withParent) {
+            directory.fullPath.dropLast(directory.name.length + 1)
+        } else {
+            directory.fullPath
+        }
+        val parentPath = if (directoryPath.endsWith(File.pathSeparator))
+            directoryPath
         else
-            directory.path + File.pathSeparator
+            directoryPath + File.pathSeparator
         zipOneDirectory(directory, shallow, parentPath, filter)
     }
 
@@ -722,14 +729,16 @@ class ZipFile(
                                         filter: ((pathName: String) -> Boolean)?)
     {
         directory.listFiles.forEach { path ->
-            val name = (if (path.isDirectory && !path.path.endsWith(File.pathSeparator))
-                path.path + File.pathSeparator
+            val name = (if (path.isDirectory && !path.fullPath.endsWith(File.pathSeparator))
+                path.fullPath + File.pathSeparator
             else
-                path.path).replace(parentPath, "")
+                path.fullPath).replace(parentPath, "")
             if (filter?.invoke(name) != false) {
-                zipFile(path)
-                if (!shallow && path.isDirectory)
-                    zipOneDirectory(path, shallow, parentPath, filter)
+                if (path.isDirectory) {
+                    if (!shallow) zipOneDirectory(path, shallow, parentPath, filter)
+                } else {
+                    zipFile(path, path.fullPath.replace(parentPath, "").replace('\\','/'))
+                }
             }
         }
     }
